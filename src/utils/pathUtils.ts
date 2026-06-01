@@ -13,7 +13,7 @@ export function getAntigravityCliPath(): string {
     }
 
     if (process.platform === 'darwin') {
-        return '/Applications/Antigravity.app/Contents/Resources/app/bin/antigravity';
+        return '/Applications/Antigravity IDE.app/Contents/Resources/app/bin/antigravity-ide';
     }
 
     if (process.platform === 'win32') {

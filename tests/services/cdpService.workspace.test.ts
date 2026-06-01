@@ -26,6 +26,7 @@ describe('CdpService - Cross-Platform Workspace Launching', () => {
     beforeEach(() => {
         originalPlatform = process.platform;
         originalEnv = { ...process.env };
+        delete process.env.ANTIGRAVITY_PATH;
 
         service = new CdpService({ portsToScan: [9999], maxReconnectAttempts: 0 });
 
@@ -74,7 +75,7 @@ describe('CdpService - Cross-Platform Workspace Launching', () => {
             await service.discoverAndConnectForWorkspace(workspacePath);
 
             expect(mockRunCommand).toHaveBeenCalledWith(
-                '/Applications/Antigravity.app/Contents/Resources/app/bin/antigravity',
+                '/Applications/Antigravity IDE.app/Contents/Resources/app/bin/antigravity-ide',
                 ['--remote-debugging-port=9999', '--new-window', workspacePath]
             );
         });
@@ -102,12 +103,12 @@ describe('CdpService - Cross-Platform Workspace Launching', () => {
 
             expect(mockRunCommand).toHaveBeenCalledTimes(2);
             expect(mockRunCommand).toHaveBeenNthCalledWith(1,
-                '/Applications/Antigravity.app/Contents/Resources/app/bin/antigravity',
+                '/Applications/Antigravity IDE.app/Contents/Resources/app/bin/antigravity-ide',
                 ['--remote-debugging-port=9999', '--new-window', workspacePath]
             );
             expect(mockRunCommand).toHaveBeenNthCalledWith(2,
                 'open',
-                ['-a', 'Antigravity', '--args', '--remote-debugging-port=9999', workspacePath]
+                ['-a', 'Antigravity IDE', '--args', '--remote-debugging-port=9999', workspacePath]
             );
         });
     });
@@ -131,7 +132,7 @@ describe('CdpService - Cross-Platform Workspace Launching', () => {
             await service.discoverAndConnectForWorkspace(workspacePath);
 
             expect(mockRunCommand).toHaveBeenCalledWith(
-                'C:\\Users\\TestUser\\AppData\\Local\\Programs\\Antigravity\\Antigravity.exe',
+                '"C:\\Users\\TestUser\\AppData\\Local\\Programs\\Antigravity IDE\\Antigravity IDE.exe"',
                 ['--remote-debugging-port=9999', '--new-window', workspacePath]
             );
         });
@@ -154,7 +155,7 @@ describe('CdpService - Cross-Platform Workspace Launching', () => {
             await service.discoverAndConnectForWorkspace(workspacePath);
 
             expect(mockRunCommand).toHaveBeenCalledWith(
-                'Antigravity.exe',
+                '"Antigravity IDE.exe"',
                 ['--remote-debugging-port=9999', '--new-window', workspacePath]
             );
         });

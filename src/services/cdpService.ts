@@ -621,7 +621,7 @@ export class CdpService extends EventEmitter {
             if (process.platform === 'darwin') {
                 // Fall back to open -a on macOS
                 logger.warn(`[CdpService] CLI launch failed, falling back to open -a: ${error?.message || String(error)}`);
-                await this.runCommand('open', ['-a', 'Antigravity', '--args', `--remote-debugging-port=${cdpPort}`, workspacePath]);
+                await this.runCommand('open', ['-a', 'Antigravity IDE', '--args', `--remote-debugging-port=${cdpPort}`, workspacePath]);
             } else {
                 logger.warn(`[CdpService] CLI launch failed: ${error?.message || String(error)}`);
                 throw error;
