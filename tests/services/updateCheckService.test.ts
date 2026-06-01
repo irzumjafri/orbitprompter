@@ -118,7 +118,7 @@ describe('fetchLatestVersion', () => {
         const version = await fetchLatestVersion();
         expect(version).toBe('1.2.3');
         expect(mockedHttps.get).toHaveBeenCalledWith(
-            'https://registry.npmjs.org/remoat/latest',
+            'https://registry.npmjs.org/orbitprompter/latest',
             expect.objectContaining({ timeout: 5000 }),
             expect.any(Function),
         );
