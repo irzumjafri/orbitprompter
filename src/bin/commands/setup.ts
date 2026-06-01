@@ -23,7 +23,7 @@ ${C.cyan}           (O,O)${C.reset}
 ${C.cyan}           (   )${C.reset}
 ${C.cyan}           -"-"-${C.reset}
 
-     ${C.bold}~ Remoat Setup (Telegram) ~${C.reset}
+     ${C.bold}~ OrbitPrompter Setup (Telegram) ~${C.reset}
 `;
 
 function isNonEmpty(value: string): boolean {
@@ -246,7 +246,7 @@ async function runSetupWizard(): Promise<SetupResult> {
         stepHeader(3, TOTAL_STEPS, 'Workspace Base Directory');
         hint('The parent directory where your coding projects live.');
         hint('Each subdirectory becomes a selectable project in Telegram via /project.');
-        hint('You can change this later in ~/.remoat/config.json or by re-running remoat setup.');
+        hint('You can change this later in ~/.remoat/config.json or by re-running orbitprompter setup.');
         hint('Press Tab to autocomplete directory paths.');
         hintBlank();
         rl.close();
@@ -274,8 +274,8 @@ export async function setupAction(): Promise<void> {
     console.log(`  ${C.dim}Saved to${C.reset} ${configPath}\n`);
     console.log(`  ${C.cyan}Next steps:${C.reset}`);
     console.log(`  ${C.bold}1.${C.reset} Open Antigravity with CDP enabled:`);
-    console.log(`     ${C.green}remoat open${C.reset}`);
+    console.log(`     ${C.green}orbitprompter open${C.reset}`);
     console.log(`     ${C.dim}(auto-selects an available port from: ${CDP_PORTS.join(', ')})${C.reset}\n`);
-    console.log(`  ${C.bold}2.${C.reset} Run: ${C.green}remoat start${C.reset}\n`);
+    console.log(`  ${C.bold}2.${C.reset} Run: ${C.green}orbitprompter start${C.reset}\n`);
     console.log(`  ${C.bold}3.${C.reset} Open Telegram and message your bot!\n`);
 }

@@ -166,6 +166,7 @@ export class CdpService extends EventEmitter {
     }
 
     async connect(): Promise<void> {
+        this.contexts = [];
         if (!this.targetUrl) {
             await this.discoverTarget();
         }
@@ -213,6 +214,7 @@ export class CdpService extends EventEmitter {
         this.ws.on('close', () => {
             this.stopHeartbeat();
             this.isConnectedFlag = false;
+            this.contexts = [];
             // Reject all unresolved pending calls to prevent memory leaks
             this.clearPendingCalls(new Error('WebSocket disconnected'));
             this.ws = null;
@@ -914,6 +916,10 @@ export class CdpService extends EventEmitter {
         // Legacy: cascade-panel context (removed in v1.21.6+; falls through to first context)
         const context = this.contexts.find(c => c.url && c.url.includes('cascade-panel'));
         if (context) return context.id;
+
+        // Default execution context of the main frame
+        const defaultContext = this.contexts.find(c => (c as any).auxData?.isDefault === true);
+        if (defaultContext) return defaultContext.id;
 
         // Fallback to Extension context or first one
         const extContext = this.contexts.find(c => c.name && c.name.includes('Extension'));

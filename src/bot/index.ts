@@ -994,7 +994,7 @@ export const startBot = async (cliLogLevel?: LogLevel) => {
     // /start command
     bot.command('start', async (ctx) => {
         await replyHtml(ctx,
-            `<b>Remoat Online</b>\n\n` +
+            `<b>OrbitPrompter Online</b>\n\n` +
             `Use /help for available commands.\n` +
             `Send any text message to forward it to Antigravity.`
         );
@@ -1003,7 +1003,7 @@ export const startBot = async (cliLogLevel?: LogLevel) => {
     // /help command
     bot.command('help', async (ctx) => {
         await replyHtml(ctx,
-            `<b>📖 Remoat Commands</b>\n\n` +
+            `<b>📖 OrbitPrompter Commands</b>\n\n` +
             `<b>💬 Chat</b>\n` +
             `/new — Start a new chat session\n` +
             `/chat — Show current session info\n\n` +
@@ -2151,7 +2151,7 @@ export const startBot = async (cliLogLevel?: LogLevel) => {
         }).catch((e) => logger.error('[voiceMsg] dispatch failed:', e));
     });
 
-    logger.info('Starting Remoat Telegram bot...');
+    logger.info('Starting OrbitPrompter Telegram bot...');
 
     // Graceful shutdown: close database on exit
     const closeDb = () => { try { db.close(); } catch (e) { logger.debug('[shutdown] db.close() failed:', e); } };

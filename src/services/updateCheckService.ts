@@ -7,7 +7,7 @@ const CONFIG_DIR = '.remoat';
 export const UPDATE_CHECK_FILE = 'update-check.json';
 export const COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-const REGISTRY_URL = 'https://registry.npmjs.org/remoat/latest';
+const REGISTRY_URL = 'https://registry.npmjs.org/orbitprompter/latest';
 const REQUEST_TIMEOUT_MS = 5000;
 
 interface UpdateCheckCache {
@@ -109,7 +109,7 @@ export async function checkForUpdates(currentVersion: string): Promise<void> {
 
         if (compareSemver(currentVersion, latest) < 0) {
             console.info(
-                `\n  Update available: ${currentVersion} \u2192 ${latest} \u2014 run \x1b[36mnpm i -g remoat\x1b[0m\n`,
+                `\n  Update available: ${currentVersion} \u2192 ${latest} — run \x1b[36mnpm i -g orbitprompter\x1b[0m\n`,
             );
         }
     } catch {
