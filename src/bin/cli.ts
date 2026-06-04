@@ -7,6 +7,7 @@ import { startAction } from './commands/start';
 import { doctorAction } from './commands/doctor';
 import { setupAction } from './commands/setup';
 import { openAction } from './commands/open';
+import { promptAction } from './commands/prompt';
 import { ConfigLoader } from '../utils/configLoader';
 import { printWelcome } from './welcome';
 
@@ -38,7 +39,8 @@ program
 program
     .command('doctor')
     .description('Check environment and dependencies')
-    .action(doctorAction);
+    .option('--prompt-ready', 'Check CDP connectivity and chat input readiness (no Telegram config required)')
+    .action((opts) => doctorAction(opts));
 
 program
     .command('setup')
@@ -49,5 +51,13 @@ program
     .command('open')
     .description('Open Antigravity with CDP enabled (auto-selects available port)')
     .action(openAction);
+
+program
+    .command('prompt')
+    .description('Submit a prompt to Antigravity via CDP (headless, no bot)')
+    .requiredOption('--text <string>', 'Prompt body to inject')
+    .option('--model <modelId>', 'Switch Antigravity model before submit (omit for Auto)')
+    .option('--timeout-minutes <N>', 'Max minutes for connect + submit', '3')
+    .action((opts) => promptAction(opts));
 
 program.parse();

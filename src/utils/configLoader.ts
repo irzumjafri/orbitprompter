@@ -21,6 +21,11 @@ export interface PersistedConfig {
     useTopics?: boolean;
 }
 
+/** Minimal config for headless CDP operations (no Telegram required). */
+export interface CdpOnlyConfig {
+    workspaceBaseDir: string;
+}
+
 function getConfigDir(): string {
     return path.join(os.homedir(), CONFIG_DIR_NAME);
 }
@@ -49,6 +54,12 @@ function readPersistedConfig(filePath: string): PersistedConfig {
     }
 }
 
+function resolveWorkspaceBaseDir(persisted: PersistedConfig): string {
+    const defaultDir = path.join(os.homedir(), 'Code');
+    const rawDir = process.env.WORKSPACE_BASE_DIR ?? persisted.workspaceBaseDir ?? defaultDir;
+    return expandTilde(rawDir);
+}
+
 function mergeConfig(persisted: PersistedConfig): AppConfig {
     const token = process.env.TELEGRAM_BOT_TOKEN ?? persisted.telegramBotToken;
     if (!token) {
@@ -60,9 +71,7 @@ function mergeConfig(persisted: PersistedConfig): AppConfig {
         throw new Error('Missing required config: ALLOWED_USER_IDS');
     }
 
-    const defaultDir = path.join(os.homedir(), 'Code');
-    const rawDir = process.env.WORKSPACE_BASE_DIR ?? persisted.workspaceBaseDir ?? defaultDir;
-    const workspaceBaseDir = expandTilde(rawDir);
+    const workspaceBaseDir = resolveWorkspaceBaseDir(persisted);
 
     const autoApproveFileEdits = resolveBoolean(
         process.env.AUTO_APPROVE_FILE_EDITS,
@@ -155,6 +164,12 @@ export const ConfigLoader = {
     load(persistedOverride?: PersistedConfig): AppConfig {
         const persisted = persistedOverride ?? readPersistedConfig(getConfigFilePath());
         return mergeConfig(persisted);
+    },
+
+    /** Load workspace settings only — does not require Telegram bot config. */
+    loadCdpOnly(persistedOverride?: PersistedConfig): CdpOnlyConfig {
+        const persisted = persistedOverride ?? readPersistedConfig(getConfigFilePath());
+        return { workspaceBaseDir: resolveWorkspaceBaseDir(persisted) };
     },
 
     save(config: Partial<PersistedConfig>): void {

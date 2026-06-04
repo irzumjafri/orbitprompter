@@ -1178,6 +1178,20 @@ export class CdpService extends EventEmitter {
     }
 
     /**
+     * Probe whether the chat input field is present and focusable (for doctor / headless readiness checks).
+     */
+    async probeChatInputReady(): Promise<{ ok: boolean; error?: string }> {
+        if (!this.isConnectedFlag || !this.ws) {
+            return { ok: false, error: 'Not connected to CDP' };
+        }
+        const focusResult = await this.focusChatInput();
+        if (!focusResult.ok) {
+            return { ok: false, error: focusResult.error || 'Chat input field not found' };
+        }
+        return { ok: true };
+    }
+
+    /**
      * Attach image files to the UI and send the specified text.
      */
     async injectMessageWithImageFiles(text: string, imageFilePaths: string[]): Promise<InjectResult> {

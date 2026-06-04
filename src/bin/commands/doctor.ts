@@ -1,4 +1,3 @@
-import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -7,33 +6,13 @@ import { CDP_PORTS } from '../../utils/cdpPorts';
 import { ConfigLoader } from '../../utils/configLoader';
 import { getAntigravityCdpHint } from '../../utils/pathUtils';
 import { COLORS } from '../../utils/logger';
+import { isCdpPortResponding, isAnyCdpPortResponding } from '../../utils/cdpAvailability';
+import { CdpService } from '../../services/cdpService';
 
 const ok = (msg: string) => console.log(`  ${COLORS.green}[OK]${COLORS.reset} ${msg}`);
 const warn = (msg: string) => console.log(`  ${COLORS.yellow}[--]${COLORS.reset} ${msg}`);
 const fail = (msg: string) => console.log(`  ${COLORS.red}[!!]${COLORS.reset} ${msg}`);
 const hint = (msg: string) => console.log(`       ${COLORS.dim}${msg}${COLORS.reset}`);
-
-function checkPort(port: number): Promise<boolean> {
-    return new Promise((resolve) => {
-        const req = http.get(`http://127.0.0.1:${port}/json/list`, (res) => {
-            let data = '';
-            res.on('data', (chunk) => (data += chunk));
-            res.on('end', () => {
-                try {
-                    const parsed = JSON.parse(data);
-                    resolve(Array.isArray(parsed));
-                } catch {
-                    resolve(false);
-                }
-            });
-        });
-        req.on('error', () => resolve(false));
-        req.setTimeout(2000, () => {
-            req.destroy();
-            resolve(false);
-        });
-    });
-}
 
 function checkEnvFile(): { exists: boolean; path: string } {
     const envPath = path.resolve(process.cwd(), '.env');
@@ -63,9 +42,56 @@ function checkRequiredEnvVars(): { name: string; set: boolean }[] {
     }));
 }
 
-export async function doctorAction(): Promise<void> {
+async function checkPromptReady(): Promise<boolean> {
+    console.log(`\n  ${COLORS.dim}Checking prompt readiness (CDP + chat input)...${COLORS.reset}`);
+
+    if (!(await isAnyCdpPortResponding())) {
+        fail('No CDP ports responding');
+        hint('Ignite Antigravity or run: orbitprompter open');
+        return false;
+    }
+    ok('CDP port is responding');
+
+    const cdp = new CdpService({ cdpCallTimeout: 15000, maxReconnectAttempts: 0 });
+    try {
+        await cdp.discoverTarget();
+        await cdp.connect();
+        const probe = await cdp.probeChatInputReady();
+        if (probe.ok) {
+            ok('Chat input field is reachable');
+            return true;
+        }
+        fail(probe.error ?? 'Chat input field not found');
+        hint('Ensure Antigravity agent panel is open and the IDE has finished loading');
+        return false;
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        fail(`Prompt readiness check failed: ${msg}`);
+        return false;
+    } finally {
+        await cdp.disconnect().catch(() => {});
+    }
+}
+
+export interface DoctorCommandOptions {
+    promptReady?: boolean;
+}
+
+export async function doctorAction(opts: DoctorCommandOptions = {}): Promise<void> {
     console.log(`\n${COLORS.cyan}orbitprompter doctor${COLORS.reset}\n`);
     let allOk = true;
+
+    if (opts.promptReady) {
+        const ready = await checkPromptReady();
+        console.log('');
+        if (ready) {
+            console.log(`  ${COLORS.green}Prompt readiness check passed!${COLORS.reset}`);
+        } else {
+            console.log(`  ${COLORS.red}Prompt readiness check failed.${COLORS.reset}`);
+            process.exitCode = 1;
+        }
+        return;
+    }
 
     // 1. Config directory check
     const configDir = ConfigLoader.getConfigDir();
@@ -154,7 +180,7 @@ export async function doctorAction(): Promise<void> {
     console.log(`\n  ${COLORS.dim}Checking CDP ports...${COLORS.reset}`);
     let cdpOk = false;
     for (const port of CDP_PORTS) {
-        const alive = await checkPort(port);
+        const alive = await isCdpPortResponding(port);
         if (alive) {
             ok(`CDP port ${port} is responding`);
             cdpOk = true;

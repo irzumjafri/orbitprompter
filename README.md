@@ -16,6 +16,7 @@ This is a custom, v2-compatible fork of [Remoat](https://github.com/optimistengi
 - [Key Features](#-key-features)
 - [How It Works](#-how-it-works)
 - [Commands](#-commands)
+- [Headless Prompt (Orbit integration)](#-headless-prompt-orbit-integration)
 - [Acknowledgements & Credits](#-acknowledgements--credits)
 - [License](#-license)
 
@@ -73,7 +74,45 @@ orbitprompter setup   # Interactive setup wizard
 orbitprompter open    # Launch Antigravity IDE with CDP port enabled
 orbitprompter start   # Start the Telegram bot service
 orbitprompter doctor  # Diagnose configuration and connectivity issues
+orbitprompter doctor --prompt-ready  # Check CDP + chat input (no Telegram config required)
+orbitprompter prompt --text "Say hello"  # Headless prompt submit (see below)
 ```
+
+### Headless Prompt (Orbit integration)
+
+**Minimum version: ≥ 1.0.3**
+
+Orbit Auto Runner and other tools can submit prompts to Antigravity without running the Telegram bot:
+
+```bash
+orbitprompter prompt --text "Run the /auto-run workflow." [--model <modelId>] [--timeout-minutes 3]
+```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--text <string>` | Yes | Full prompt body (shell-escaped) |
+| `--model <modelId>` | No | Switch Antigravity model before submit (omit for Auto). IDs match the IDE, e.g. `gemini-3-flash`, `claude-opus-4.6-thinking` |
+| `--timeout-minutes <N>` | No | Max time to wait for connect + submit (default: 3) |
+
+**Prerequisites**
+
+- Antigravity must be running with CDP enabled (Orbit **Ignite**, or `orbitprompter open`).
+- Does **not** require `orbitprompter start` or Telegram configuration.
+- Connects to the **first** Antigravity workbench window found on CDP ports. If multiple windows are open, the first match is used.
+
+**Exit codes**
+
+| Code | Meaning |
+|------|---------|
+| `0` | Prompt submitted successfully |
+| `1` | General failure (empty text, workspace busy, lock held) |
+| `2` | CDP not available — Ignite Antigravity first |
+| `3` | Antigravity workbench not found / UI not ready |
+| `4` | Submit failed (model switch, inject, or timeout) |
+
+On success, stdout prints one line of JSON: `{"ok":true,"workspace":"..."}`. Errors go to stderr.
+
+Config is read from `~/.remoat/config.json` and environment variables (e.g. `WORKSPACE_BASE_DIR`, `ANTIGRAVITY_PATH`) when present, but Telegram tokens are not required for `prompt`.
 
 ### Telegram Commands
 
