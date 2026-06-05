@@ -643,14 +643,54 @@ export class CdpService extends EventEmitter {
             logger.info(`[CdpService] ${appName} is running but unresponsive to CDP. Terminating to allow a fresh start with debugging enabled...`);
             try {
                 if (platform === 'darwin') {
-                    await execFileAsync('pkill', ['-f', appName]);
+                    // Quit gracefully via AppleScript
+                    await execFileAsync('osascript', ['-e', `quit app "${appName}"`]);
+                    // Poll for up to 5 seconds to ensure it quit, otherwise force-kill
+                    const startTime = Date.now();
+                    let stillRunning = true;
+                    while (Date.now() - startTime < 5000) {
+                        try {
+                            const { stdout } = await execFileAsync('pgrep', ['-f', appName]);
+                            if (stdout.trim().length === 0) {
+                                stillRunning = false;
+                                break;
+                            }
+                        } catch {
+                            stillRunning = false;
+                            break;
+                        }
+                        await new Promise((r) => setTimeout(r, 500));
+                    }
+                    if (stillRunning) {
+                        await execFileAsync('pkill', ['-f', appName]);
+                    }
                 } else if (platform === 'win32') {
-                    await execFileAsync('taskkill', ['/F', '/IM', `${appName}.exe`]);
+                    // taskkill without /F sends WM_CLOSE for graceful exit
+                    await execFileAsync('taskkill', ['/IM', `${appName}.exe`]);
+                    // Poll for up to 5 seconds, otherwise force-kill
+                    const startTime = Date.now();
+                    let stillRunning = true;
+                    while (Date.now() - startTime < 5000) {
+                        try {
+                            const { stdout } = await execFileAsync('tasklist', ['/FI', `IMAGENAME eq ${appName}.exe`]);
+                            if (!stdout.includes(`${appName}.exe`)) {
+                                stillRunning = false;
+                                break;
+                            }
+                        } catch {
+                            stillRunning = false;
+                            break;
+                        }
+                        await new Promise((r) => setTimeout(r, 500));
+                    }
+                    if (stillRunning) {
+                        await execFileAsync('taskkill', ['/F', '/IM', `${appName}.exe`]);
+                    }
                 }
                 // Give OS a moment to release ports/processes
-                await new Promise((r) => setTimeout(r, 1500));
+                await new Promise((r) => setTimeout(r, 1000));
             } catch (e: any) {
-                logger.error(`[CdpService] Failed to kill existing instance: ${e.message}`);
+                logger.error(`[CdpService] Failed to quit existing instance: ${e.message}`);
             }
         }
 
@@ -988,19 +1028,25 @@ export class CdpService extends EventEmitter {
             return { ok: true };
         })()`;
 
-        for (const ctx of this.contexts) {
-            try {
-                const res = await this.call('Runtime.evaluate', {
-                    expression: focusScript,
-                    returnByValue: true,
-                    contextId: ctx.id,
-                });
-                if (res?.result?.value?.ok) {
-                    return { ok: true, contextId: ctx.id };
+        const startTime = Date.now();
+        const timeoutMs = 15000; // Wait up to 15 seconds for UI to render
+        while (Date.now() - startTime < timeoutMs) {
+            for (const ctx of this.contexts) {
+                try {
+                    const res = await this.call('Runtime.evaluate', {
+                        expression: focusScript,
+                        returnByValue: true,
+                        contextId: ctx.id,
+                    });
+                    if (res?.result?.value?.ok) {
+                        return { ok: true, contextId: ctx.id };
+                    }
+                } catch {
+                    // Try next context
                 }
-            } catch {
-                // Try next context
             }
+            // If contexts are not yet populated, wait a bit
+            await new Promise(r => setTimeout(r, 500));
         }
 
         return { ok: false, error: 'Chat input field not found' };
