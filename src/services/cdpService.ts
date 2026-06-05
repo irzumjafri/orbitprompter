@@ -1025,6 +1025,15 @@ export class CdpService extends EventEmitter {
             const editor = visible[visible.length - 1];
             if (!editor) return { ok: false, error: 'No editor found' };
             editor.focus();
+            // Dispatch mousedown, mouseup, and click to trigger Monaco/framework click-to-focus handlers
+            editor.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+            editor.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+            editor.click();
+            // Also focus any internal inputarea/textarea (Monaco helper)
+            const inputArea = editor.querySelector('textarea, [contenteditable="true"]');
+            if (inputArea) {
+                (inputArea).focus();
+            }
             return { ok: true };
         })()`;
 
@@ -1234,66 +1243,6 @@ export class CdpService extends EventEmitter {
     }
 
     /**
-     * Locate and click the chat submit button in the UI.
-     */
-    private async clickSubmitButton(contextId?: number): Promise<{ ok: boolean; error?: string }> {
-        const clickScript = `(() => {
-            const classes = ${JSON.stringify(SELECTORS.SUBMIT_BUTTON_SVG_CLASSES)};
-            const buttons = Array.from(document.querySelectorAll('button'));
-            
-            // 1. Try to find the button containing the submit SVG classes
-            for (const btn of buttons) {
-                const hasSvg = btn.querySelector('svg');
-                if (hasSvg) {
-                    const classList = Array.from(hasSvg.classList);
-                    if (classes.some(cls => classList.includes(cls))) {
-                        btn.click();
-                        return { ok: true, method: 'svg-class' };
-                    }
-                }
-            }
-            
-            // 2. Fallback: find any button with a right/up arrow icon or role/aria-label containing "send" or "submit"
-            for (const btn of buttons) {
-                const label = (btn.getAttribute('aria-label') || btn.getAttribute('title') || btn.textContent || '').toLowerCase();
-                if (label.includes('send') || label.includes('submit')) {
-                    btn.click();
-                    return { ok: true, method: 'label' };
-                }
-            }
-            
-            // 3. Fallback: Find the button next to the textbox
-            const editors = Array.from(document.querySelectorAll('${SELECTORS.CHAT_INPUT}'));
-            const visible = editors.filter(el => el.offsetParent !== null);
-            const editor = visible[visible.length - 1];
-            if (editor) {
-                let parent = editor.parentElement;
-                while (parent) {
-                    const btn = parent.querySelector('button');
-                    if (btn) {
-                        btn.click();
-                        return { ok: true, method: 'proximity' };
-                    }
-                    parent = parent.parentElement;
-                }
-            }
-
-            return { ok: false, error: 'Submit button not found' };
-        })()`;
-
-        try {
-            const res = await this.call('Runtime.evaluate', {
-                expression: clickScript,
-                returnByValue: true,
-                ...(contextId !== undefined ? { contextId } : {}),
-            });
-            return res?.result?.value || { ok: false, error: 'Script evaluation failed' };
-        } catch (error: any) {
-            return { ok: false, error: error?.message || String(error) };
-        }
-    }
-
-    /**
      * Inject and send the specified text into Antigravity's chat input field.
      *
      * Strategy:
@@ -1314,6 +1263,9 @@ export class CdpService extends EventEmitter {
             return { ok: false, error: focusResult.error || 'Chat input field not found' };
         }
 
+        // Wait for focus/click event handlers to propagate in the UI
+        await new Promise(r => setTimeout(r, 300));
+
         // Clear any existing text in the input field before injecting
         await this.clearInputField();
 
@@ -1324,12 +1276,7 @@ export class CdpService extends EventEmitter {
         // 2. Send via Enter key
         await this.pressEnterToSend();
 
-        // 3. Fallback click submit button if enter didn't submit
-        await new Promise(r => setTimeout(r, 200));
-        const clickRes = await this.clickSubmitButton(focusResult.contextId);
-        logger.debug(`[injectMessage] clickSubmitButton result: ${JSON.stringify(clickRes)}`);
-
-        return { ok: true, method: clickRes.ok ? 'click' : 'enter', contextId: focusResult.contextId };
+        return { ok: true, method: 'enter', contextId: focusResult.contextId };
     }
 
     /**
@@ -1359,6 +1306,9 @@ export class CdpService extends EventEmitter {
             return { ok: false, error: focusResult.error || 'Chat input field not found' };
         }
 
+        // Wait for focus/click event handlers to propagate in the UI
+        await new Promise(r => setTimeout(r, 300));
+
         // Clear any existing text in the input field before injecting
         await this.clearInputField();
 
@@ -1371,12 +1321,7 @@ export class CdpService extends EventEmitter {
         await new Promise(r => setTimeout(r, 200));
         await this.pressEnterToSend();
 
-        // Fallback click submit button if enter didn't submit
-        await new Promise(r => setTimeout(r, 200));
-        const clickRes = await this.clickSubmitButton(focusResult.contextId);
-        logger.debug(`[injectMessageWithImageFiles] clickSubmitButton result: ${JSON.stringify(clickRes)}`);
-
-        return { ok: true, method: clickRes.ok ? 'click' : 'enter', contextId: focusResult.contextId };
+        return { ok: true, method: 'enter', contextId: focusResult.contextId };
     }
 
     /**
