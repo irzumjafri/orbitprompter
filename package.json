@@ -1,6 +1,6 @@
 {
   "name": "orbitprompter",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Control Antigravity IDE from Telegram — a custom fork of Remoat, updated with v2 compatibility to remotely operate Antigravity on your home PC from your smartphone.",
   "main": "dist/index.js",
   "bin": {
