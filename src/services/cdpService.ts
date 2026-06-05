@@ -3,9 +3,12 @@ import { CDP_PORTS } from '../utils/cdpPorts';
 import { EventEmitter } from 'events';
 import * as http from 'http';
 import * as net from 'net';
-import { spawn } from 'child_process';
+import { spawn, execFile } from 'child_process';
 import { getAntigravityCliPath, extractProjectNameFromPath } from '../utils/pathUtils';
 import WebSocket from 'ws';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
 
 export interface CdpServiceOptions {
     portsToScan?: number[];
@@ -610,6 +613,47 @@ export class CdpService extends EventEmitter {
         // This method is only called when no CDP port is responding, meaning
         // Antigravity is not running (or running without CDP). We must pass
         // --remote-debugging-port so CDP is available for the poll loop below.
+        const platform = process.platform;
+        let appName = 'Antigravity IDE';
+        if (platform === 'darwin') {
+            const cli = getAntigravityCliPath();
+            if (cli.includes('Antigravity.app')) {
+                appName = 'Antigravity';
+            }
+        }
+
+        let isRunning = false;
+        if (platform === 'darwin') {
+            try {
+                const { stdout } = await execFileAsync('pgrep', ['-f', appName]);
+                isRunning = stdout.trim().length > 0;
+            } catch {
+                isRunning = false;
+            }
+        } else if (platform === 'win32') {
+            try {
+                const { stdout } = await execFileAsync('tasklist', ['/FI', `IMAGENAME eq ${appName}.exe`]);
+                isRunning = stdout.includes(`${appName}.exe`);
+            } catch {
+                isRunning = false;
+            }
+        }
+
+        if (isRunning) {
+            logger.info(`[CdpService] ${appName} is running but unresponsive to CDP. Terminating to allow a fresh start with debugging enabled...`);
+            try {
+                if (platform === 'darwin') {
+                    await execFileAsync('pkill', ['-f', appName]);
+                } else if (platform === 'win32') {
+                    await execFileAsync('taskkill', ['/F', '/IM', `${appName}.exe`]);
+                }
+                // Give OS a moment to release ports/processes
+                await new Promise((r) => setTimeout(r, 1500));
+            } catch (e: any) {
+                logger.error(`[CdpService] Failed to kill existing instance: ${e.message}`);
+            }
+        }
+
         const antigravityCli = getAntigravityCliPath();
         const cdpPort = await this.findAvailableCdpPort();
         if (cdpPort === null) {
