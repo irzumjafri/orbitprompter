@@ -444,7 +444,7 @@ export class CdpService extends EventEmitter {
         }
 
         // 3. If not found by probe either, launch a new window
-        return this.launchAndConnectWorkspace(workspacePath, projectName);
+        return this.launchAndConnectWorkspace(workspacePath, projectName, respondingPort);
     }
 
     /**
@@ -609,6 +609,7 @@ export class CdpService extends EventEmitter {
     private async launchAndConnectWorkspace(
         workspacePath: string,
         projectName: string,
+        existingPort: number | null = null,
     ): Promise<boolean> {
         // This method is only called when no CDP port is responding, meaning
         // Antigravity is not running (or running without CDP). We must pass
@@ -623,23 +624,25 @@ export class CdpService extends EventEmitter {
         }
 
         let isRunning = false;
-        if (platform === 'darwin') {
-            try {
-                const { stdout } = await execFileAsync('pgrep', ['-f', appName]);
-                isRunning = stdout.trim().length > 0;
-            } catch {
-                isRunning = false;
-            }
-        } else if (platform === 'win32') {
-            try {
-                const { stdout } = await execFileAsync('tasklist', ['/FI', `IMAGENAME eq ${appName}.exe`]);
-                isRunning = stdout.includes(`${appName}.exe`);
-            } catch {
-                isRunning = false;
+        if (!existingPort) {
+            if (platform === 'darwin') {
+                try {
+                    const { stdout } = await execFileAsync('pgrep', ['-f', appName]);
+                    isRunning = stdout.trim().length > 0;
+                } catch {
+                    isRunning = false;
+                }
+            } else if (platform === 'win32') {
+                try {
+                    const { stdout } = await execFileAsync('tasklist', ['/FI', `IMAGENAME eq ${appName}.exe`]);
+                    isRunning = stdout.includes(`${appName}.exe`);
+                } catch {
+                    isRunning = false;
+                }
             }
         }
 
-        if (isRunning) {
+        if (isRunning && !existingPort) {
             logger.info(`[CdpService] ${appName} is running but unresponsive to CDP. Terminating to allow a fresh start with debugging enabled...`);
             try {
                 if (platform === 'darwin') {
@@ -687,7 +690,7 @@ export class CdpService extends EventEmitter {
                         await execFileAsync('taskkill', ['/F', '/IM', `${appName}.exe`]);
                     }
                 }
-                // Give OS a moment to release ports/processes
+                // Give OS a moment to release processes
                 await new Promise((r) => setTimeout(r, 1000));
             } catch (e: any) {
                 logger.error(`[CdpService] Failed to quit existing instance: ${e.message}`);
@@ -695,14 +698,14 @@ export class CdpService extends EventEmitter {
         }
 
         const antigravityCli = getAntigravityCliPath();
-        const cdpPort = await this.findAvailableCdpPort();
+        const cdpPort = existingPort !== null ? existingPort : await this.findAvailableCdpPort();
         if (cdpPort === null) {
             throw new Error(
                 `No available CDP ports. All candidate ports are in use: ${this.ports.join(', ')}`,
             );
         }
 
-        const launchArgs = [`--remote-debugging-port=${cdpPort}`, '--new-window', workspacePath];
+        const launchArgs = existingPort !== null ? [workspacePath] : [`--remote-debugging-port=${cdpPort}`, '--new-window', workspacePath];
         logger.debug(`[CdpService] Launching Antigravity: ${antigravityCli} ${launchArgs.join(' ')}`);
         try {
             await this.runCommand(antigravityCli, launchArgs);
@@ -710,7 +713,8 @@ export class CdpService extends EventEmitter {
             if (process.platform === 'darwin') {
                 // Fall back to open -a on macOS
                 logger.warn(`[CdpService] CLI launch failed, falling back to open -a: ${error?.message || String(error)}`);
-                await this.runCommand('open', ['-a', 'Antigravity IDE', '--args', `--remote-debugging-port=${cdpPort}`, workspacePath]);
+                const openArgs = existingPort !== null ? [workspacePath] : ['--args', `--remote-debugging-port=${cdpPort}`, workspacePath];
+                await this.runCommand('open', ['-a', 'Antigravity IDE', ...openArgs]);
             } else {
                 logger.warn(`[CdpService] CLI launch failed: ${error?.message || String(error)}`);
                 throw error;
