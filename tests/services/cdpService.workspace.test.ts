@@ -13,8 +13,18 @@ jest.mock('../../src/utils/logger', () => ({
     }
 }));
 
-// Mock child_process for spawn
-jest.mock('child_process');
+// Mock child_process for spawn and execFile
+jest.mock('child_process', () => {
+    return {
+        spawn: jest.fn(),
+        execFile: jest.fn((...args) => {
+            const callback = args[args.length - 1];
+            if (typeof callback === 'function') {
+                callback(null, { stdout: '' });
+            }
+        })
+    };
+});
 
 describe('CdpService - Cross-Platform Workspace Launching', () => {
     let service: CdpService;
@@ -47,7 +57,7 @@ describe('CdpService - Cross-Platform Workspace Launching', () => {
     afterEach(() => {
         Object.defineProperty(process, 'platform', { value: originalPlatform });
         process.env = originalEnv;
-        jest.resetAllMocks();
+        jest.clearAllMocks();
     });
 
     // Helper to mock the platform

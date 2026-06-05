@@ -156,7 +156,7 @@ describe('CdpService - Message Injection (Step 5)', () => {
 
         evaluateResponder = () => ({ ok: false, error: 'No editor found' });
 
-        const result = await service.injectMessage('失敗するメッセージ');
+        const result = await service.injectMessage('失敗するメッセージ', 500);
         expect(result.ok).toBe(false);
         expect(result.error).toBeDefined();
     });

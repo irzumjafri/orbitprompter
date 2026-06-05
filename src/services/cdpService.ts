@@ -1022,7 +1022,7 @@ export class CdpService extends EventEmitter {
     /**
      * Focus the chat input field.
      */
-    private async focusChatInput(): Promise<{ ok: boolean; contextId?: number; error?: string }> {
+    private async focusChatInput(timeoutMs = 15000): Promise<{ ok: boolean; contextId?: number; error?: string }> {
         const focusScript = `(() => {
             const editors = Array.from(document.querySelectorAll('${SELECTORS.CHAT_INPUT}'));
             const visible = editors.filter(el => el.offsetParent !== null);
@@ -1042,7 +1042,6 @@ export class CdpService extends EventEmitter {
         })()`;
 
         const startTime = Date.now();
-        const timeoutMs = 15000; // Wait up to 15 seconds for UI to render
         while (Date.now() - startTime < timeoutMs) {
             for (const ctx of this.contexts) {
                 try {
@@ -1257,12 +1256,12 @@ export class CdpService extends EventEmitter {
      * Using CDP Input API instead of DOM manipulation ensures reliable
      * delivery to Cascade panel's React/framework event handlers.
      */
-    async injectMessage(text: string): Promise<InjectResult> {
+    async injectMessage(text: string, timeoutMs = 15000): Promise<InjectResult> {
         if (!this.isConnectedFlag || !this.ws) {
             throw new Error('Not connected to CDP. Call connect() first.');
         }
 
-        const focusResult = await this.focusChatInput();
+        const focusResult = await this.focusChatInput(timeoutMs);
         if (!focusResult.ok) {
             return { ok: false, error: focusResult.error || 'Chat input field not found' };
         }
@@ -1286,11 +1285,11 @@ export class CdpService extends EventEmitter {
     /**
      * Probe whether the chat input field is present and focusable (for doctor / headless readiness checks).
      */
-    async probeChatInputReady(): Promise<{ ok: boolean; error?: string }> {
+    async probeChatInputReady(timeoutMs = 15000): Promise<{ ok: boolean; error?: string }> {
         if (!this.isConnectedFlag || !this.ws) {
             return { ok: false, error: 'Not connected to CDP' };
         }
-        const focusResult = await this.focusChatInput();
+        const focusResult = await this.focusChatInput(timeoutMs);
         if (!focusResult.ok) {
             return { ok: false, error: focusResult.error || 'Chat input field not found' };
         }
@@ -1300,12 +1299,12 @@ export class CdpService extends EventEmitter {
     /**
      * Attach image files to the UI and send the specified text.
      */
-    async injectMessageWithImageFiles(text: string, imageFilePaths: string[]): Promise<InjectResult> {
+    async injectMessageWithImageFiles(text: string, imageFilePaths: string[], timeoutMs = 15000): Promise<InjectResult> {
         if (!this.isConnectedFlag || !this.ws) {
             throw new Error('Not connected to CDP. Call connect() first.');
         }
 
-        const focusResult = await this.focusChatInput();
+        const focusResult = await this.focusChatInput(timeoutMs);
         if (!focusResult.ok) {
             return { ok: false, error: focusResult.error || 'Chat input field not found' };
         }
