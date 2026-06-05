@@ -3,9 +3,12 @@ import { CDP_PORTS } from '../utils/cdpPorts';
 import { EventEmitter } from 'events';
 import * as http from 'http';
 import * as net from 'net';
-import { spawn } from 'child_process';
+import { spawn, execFile } from 'child_process';
 import { getAntigravityCliPath, extractProjectNameFromPath } from '../utils/pathUtils';
 import WebSocket from 'ws';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
 
 export interface CdpServiceOptions {
     portsToScan?: number[];
@@ -441,7 +444,7 @@ export class CdpService extends EventEmitter {
         }
 
         // 3. If not found by probe either, launch a new window
-        return this.launchAndConnectWorkspace(workspacePath, projectName);
+        return this.launchAndConnectWorkspace(workspacePath, projectName, respondingPort);
     }
 
     /**
@@ -606,19 +609,103 @@ export class CdpService extends EventEmitter {
     private async launchAndConnectWorkspace(
         workspacePath: string,
         projectName: string,
+        existingPort: number | null = null,
     ): Promise<boolean> {
         // This method is only called when no CDP port is responding, meaning
         // Antigravity is not running (or running without CDP). We must pass
         // --remote-debugging-port so CDP is available for the poll loop below.
+        const platform = process.platform;
+        let appName = 'Antigravity IDE';
+        if (platform === 'darwin') {
+            const cli = getAntigravityCliPath();
+            if (cli.includes('Antigravity.app')) {
+                appName = 'Antigravity';
+            }
+        }
+
+        let isRunning = false;
+        if (!existingPort) {
+            if (platform === 'darwin') {
+                try {
+                    const { stdout } = await execFileAsync('pgrep', ['-f', appName]);
+                    isRunning = stdout.trim().length > 0;
+                } catch {
+                    isRunning = false;
+                }
+            } else if (platform === 'win32') {
+                try {
+                    const { stdout } = await execFileAsync('tasklist', ['/FI', `IMAGENAME eq ${appName}.exe`]);
+                    isRunning = stdout.includes(`${appName}.exe`);
+                } catch {
+                    isRunning = false;
+                }
+            }
+        }
+
+        if (isRunning && !existingPort) {
+            logger.info(`[CdpService] ${appName} is running but unresponsive to CDP. Terminating to allow a fresh start with debugging enabled...`);
+            try {
+                if (platform === 'darwin') {
+                    // Quit gracefully via AppleScript
+                    await execFileAsync('osascript', ['-e', `quit app "${appName}"`]);
+                    // Poll for up to 5 seconds to ensure it quit, otherwise force-kill
+                    const startTime = Date.now();
+                    let stillRunning = true;
+                    while (Date.now() - startTime < 5000) {
+                        try {
+                            const { stdout } = await execFileAsync('pgrep', ['-f', appName]);
+                            if (stdout.trim().length === 0) {
+                                stillRunning = false;
+                                break;
+                            }
+                        } catch {
+                            stillRunning = false;
+                            break;
+                        }
+                        await new Promise((r) => setTimeout(r, 500));
+                    }
+                    if (stillRunning) {
+                        await execFileAsync('pkill', ['-f', appName]);
+                    }
+                } else if (platform === 'win32') {
+                    // taskkill without /F sends WM_CLOSE for graceful exit
+                    await execFileAsync('taskkill', ['/IM', `${appName}.exe`]);
+                    // Poll for up to 5 seconds, otherwise force-kill
+                    const startTime = Date.now();
+                    let stillRunning = true;
+                    while (Date.now() - startTime < 5000) {
+                        try {
+                            const { stdout } = await execFileAsync('tasklist', ['/FI', `IMAGENAME eq ${appName}.exe`]);
+                            if (!stdout.includes(`${appName}.exe`)) {
+                                stillRunning = false;
+                                break;
+                            }
+                        } catch {
+                            stillRunning = false;
+                            break;
+                        }
+                        await new Promise((r) => setTimeout(r, 500));
+                    }
+                    if (stillRunning) {
+                        await execFileAsync('taskkill', ['/F', '/IM', `${appName}.exe`]);
+                    }
+                }
+                // Give OS a moment to release processes
+                await new Promise((r) => setTimeout(r, 1000));
+            } catch (e: any) {
+                logger.error(`[CdpService] Failed to quit existing instance: ${e.message}`);
+            }
+        }
+
         const antigravityCli = getAntigravityCliPath();
-        const cdpPort = await this.findAvailableCdpPort();
+        const cdpPort = existingPort !== null ? existingPort : await this.findAvailableCdpPort();
         if (cdpPort === null) {
             throw new Error(
                 `No available CDP ports. All candidate ports are in use: ${this.ports.join(', ')}`,
             );
         }
 
-        const launchArgs = [`--remote-debugging-port=${cdpPort}`, '--new-window', workspacePath];
+        const launchArgs = existingPort !== null ? [workspacePath] : [`--remote-debugging-port=${cdpPort}`, '--new-window', workspacePath];
         logger.debug(`[CdpService] Launching Antigravity: ${antigravityCli} ${launchArgs.join(' ')}`);
         try {
             await this.runCommand(antigravityCli, launchArgs);
@@ -626,7 +713,8 @@ export class CdpService extends EventEmitter {
             if (process.platform === 'darwin') {
                 // Fall back to open -a on macOS
                 logger.warn(`[CdpService] CLI launch failed, falling back to open -a: ${error?.message || String(error)}`);
-                await this.runCommand('open', ['-a', 'Antigravity IDE', '--args', `--remote-debugging-port=${cdpPort}`, workspacePath]);
+                const openArgs = existingPort !== null ? [workspacePath] : ['--args', `--remote-debugging-port=${cdpPort}`, workspacePath];
+                await this.runCommand('open', ['-a', 'Antigravity IDE', ...openArgs]);
             } else {
                 logger.warn(`[CdpService] CLI launch failed: ${error?.message || String(error)}`);
                 throw error;
@@ -941,22 +1029,37 @@ export class CdpService extends EventEmitter {
             const editor = visible[visible.length - 1];
             if (!editor) return { ok: false, error: 'No editor found' };
             editor.focus();
+            // Dispatch mousedown, mouseup, and click to trigger Monaco/framework click-to-focus handlers
+            editor.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+            editor.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+            editor.click();
+            // Also focus any internal inputarea/textarea (Monaco helper)
+            const inputArea = editor.querySelector('textarea, [contenteditable="true"]');
+            if (inputArea) {
+                (inputArea).focus();
+            }
             return { ok: true };
         })()`;
 
-        for (const ctx of this.contexts) {
-            try {
-                const res = await this.call('Runtime.evaluate', {
-                    expression: focusScript,
-                    returnByValue: true,
-                    contextId: ctx.id,
-                });
-                if (res?.result?.value?.ok) {
-                    return { ok: true, contextId: ctx.id };
+        const startTime = Date.now();
+        const timeoutMs = 15000; // Wait up to 15 seconds for UI to render
+        while (Date.now() - startTime < timeoutMs) {
+            for (const ctx of this.contexts) {
+                try {
+                    const res = await this.call('Runtime.evaluate', {
+                        expression: focusScript,
+                        returnByValue: true,
+                        contextId: ctx.id,
+                    });
+                    if (res?.result?.value?.ok) {
+                        return { ok: true, contextId: ctx.id };
+                    }
+                } catch {
+                    // Try next context
                 }
-            } catch {
-                // Try next context
             }
+            // If contexts are not yet populated, wait a bit
+            await new Promise(r => setTimeout(r, 500));
         }
 
         return { ok: false, error: 'Chat input field not found' };
@@ -1164,6 +1267,9 @@ export class CdpService extends EventEmitter {
             return { ok: false, error: focusResult.error || 'Chat input field not found' };
         }
 
+        // Wait for focus/click event handlers to propagate in the UI
+        await new Promise(r => setTimeout(r, 300));
+
         // Clear any existing text in the input field before injecting
         await this.clearInputField();
 
@@ -1203,6 +1309,9 @@ export class CdpService extends EventEmitter {
         if (!focusResult.ok) {
             return { ok: false, error: focusResult.error || 'Chat input field not found' };
         }
+
+        // Wait for focus/click event handlers to propagate in the UI
+        await new Promise(r => setTimeout(r, 300));
 
         // Clear any existing text in the input field before injecting
         await this.clearInputField();
